@@ -21,3 +21,12 @@ pnpm-debug.log*
 # IDEs
 .vscode/
 .idea/
+
+# Claude Code
+.claude/
+
+# Project documentation (contains business strategy)
+CLAUDE.md
+
+# Development test files
+test-notion.mjs
