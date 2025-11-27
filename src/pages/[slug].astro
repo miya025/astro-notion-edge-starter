@@ -1,15 +1,36 @@
 ---
 import Layout from '@/layouts/Layout.astro';
 import NotionBlocks from '@/components/Notion/NotionBlocks.astro';
+import { Image } from 'astro:assets';
 import { getPosts, getPageBlocks } from '@/lib/notion/client';
+import { downloadImage } from '@/lib/utils/imageDownloader';
 
 export async function getStaticPaths() {
   const posts = await getPosts();
 
-  return posts.map((post) => ({
-    params: { slug: post.slug },
-    props: { post },
-  }));
+  // カバー画像をダウンロード
+  const postsWithLocalImages = await Promise.all(
+    posts.map(async (post) => {
+      let localCoverImage = null;
+
+      if (post.coverImage) {
+        const fileName = await downloadImage(post.coverImage, post.slug);
+        localCoverImage = fileName;
+      }
+
+      return {
+        params: { slug: post.slug },
+        props: {
+          post: {
+            ...post,
+            localCoverImage,
+          },
+        },
+      };
+    })
+  );
+
+  return postsWithLocalImages;
 }
 
 const { post } = Astro.props;
@@ -19,6 +40,18 @@ if (!post) {
 }
 
 const blocks = await getPageBlocks(post.id);
+
+// カバー画像をimport
+const images = import.meta.glob<{ default: ImageMetadata }>('/src/assets/covers/*');
+let coverImageSrc = null;
+
+if (post.localCoverImage) {
+  const imagePath = `/src/assets/covers/${post.localCoverImage}`;
+  if (images[imagePath]) {
+    const imageModule = await images[imagePath]();
+    coverImageSrc = imageModule.default;
+  }
+}
 ---
 
 <Layout
@@ -31,16 +64,17 @@ const blocks = await getPageBlocks(post.id);
   <article class="max-w-4xl mx-auto px-4 py-8 md:py-12 bg-white rounded-2xl shadow-sm my-8">
     <!-- Header -->
     <header class="mb-10">
-      {post.coverImage && (
+      {coverImageSrc && (
         <div class="aspect-[2/1] sm:aspect-video overflow-hidden rounded-2xl mb-8 shadow-lg">
-          <img
-            src={post.coverImage}
+          <Image
+            src={coverImageSrc}
             alt={post.title}
             class="w-full h-full object-cover"
             loading="eager"
-            decoding="async"
-            width="1200"
-            height="675"
+            widths={[400, 800, 1200]}
+            sizes="(max-width: 768px) 100vw, 1200px"
+            format="webp"
+            quality={85}
           />
         </div>
       )}

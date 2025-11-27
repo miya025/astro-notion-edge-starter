@@ -1,8 +1,45 @@
 ---
 import Layout from '@/layouts/Layout.astro';
+import { Image } from 'astro:assets';
 import { getPosts } from '@/lib/notion/client';
+import { downloadImage } from '@/lib/utils/imageDownloader';
 
 const posts = await getPosts();
+
+// カバー画像をダウンロード
+const postsWithLocalImages = await Promise.all(
+  posts.map(async (post) => {
+    let localCoverImage = null;
+
+    if (post.coverImage) {
+      const fileName = await downloadImage(post.coverImage, post.slug);
+      localCoverImage = fileName;
+    }
+
+    return {
+      ...post,
+      localCoverImage,
+    };
+  })
+);
+
+// カバー画像をimport
+const images = import.meta.glob<{ default: ImageMetadata }>('/src/assets/covers/*');
+
+// 各記事の画像を事前に読み込む
+const postsWithImages = await Promise.all(
+  postsWithLocalImages.map(async (post) => {
+    let coverImageSrc = null;
+    if (post.localCoverImage) {
+      const imagePath = `/src/assets/covers/${post.localCoverImage}`;
+      if (images[imagePath]) {
+        const imageModule = await images[imagePath]();
+        coverImageSrc = imageModule.default;
+      }
+    }
+    return { ...post, coverImageSrc };
+  })
+);
 ---
 
 <Layout>
@@ -17,7 +54,7 @@ const posts = await getPosts();
       </p>
     </header>
 
-    {posts.length === 0 ? (
+    {postsWithImages.length === 0 ? (
       <div class="text-center py-16 px-4">
         <div class="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
           <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -31,19 +68,20 @@ const posts = await getPosts();
       </div>
     ) : (
       <div class="grid gap-6 md:gap-8 md:grid-cols-2 lg:grid-cols-2">
-        {posts.map((post, index) => (
+        {postsWithImages.map((post, index) => (
           <article class="group bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl border border-gray-100 hover:border-gray-200 transition-all duration-300">
             <a href={`/${post.slug}`} class="block">
-              {post.coverImage && (
+              {post.coverImageSrc && (
                 <div class="aspect-[16/9] overflow-hidden bg-gray-100 relative">
-                  <img
-                    src={post.coverImage}
+                  <Image
+                    src={post.coverImageSrc}
                     alt={post.title}
                     class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     loading={index < 2 ? 'eager' : 'lazy'}
-                    decoding="async"
-                    width="800"
-                    height="450"
+                    widths={[400, 600, 800]}
+                    sizes="(max-width: 768px) 100vw, 50vw"
+                    format="webp"
+                    quality={80}
                   />
                   <div class="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 </div>
